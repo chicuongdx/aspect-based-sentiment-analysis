@@ -1,0 +1,67 @@
+class BiLSTMCRF(nn.Module):
+    def __init__(self, vocab_size, tag_to_ix, embedding_dim=384, hidden_dim=384):
+        super(BiLSTMCRF, self).__init__()
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+        self.vocab_size = vocab_size
+        self.tag_to_ix = tag_to_ix
+        self.tagset_size = len(tag_to_ix)
+
+        # embedding layer
+        self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
+        # lstm layer
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim // 2,
+                            num_layers=1, bidirectional=True)
+        # linear layer to get scores
+        self.hidden2tag = nn.Linear(hidden_dim, self.tagset_size)
+        # CRF layer
+        self.crf = CRF(self.tagset_size)
+
+    def _get_lstm_features(self, sentence):
+        # sentence: [seq_len, batch_size]
+        # embeds: [seq_len, batch_size, embedding_dim]
+        embeds = self.word_embeds(sentence)
+        # lstm_out: [seq_len, batch_size, hidden_dim]
+        # hidden: [num_layers * num_directions, batch_size, hidden_dim]
+        lstm_out, hidden = self.lstm(embeds)
+        # lstm_feats: [seq_len, batch_size, tagset_size]
+        lstm_feats = self.hidden2tag(lstm_out)
+        return lstm_feats
+
+    def neg_log_likelihood(self, sentence, tags):
+        # sentence: [seq_len, batch_size]
+        # tags: [seq_len, batch_size]
+        # feats: [seq_len, batch_size, tagset_size]
+        feats = self._get_lstm_features(sentence)
+        # loss: [1]
+        loss = self.crf.neg_log_likelihood(feats, tags)
+        return loss
+
+    def forward(self, sentence):
+        # sentence: [seq_len, batch_size]
+        # Get the emission scores from the BiLSTM
+        # feats: [seq_len, batch_size, tagset_size]
+        lstm_feats = self._get_lstm_features(sentence)
+        # Get the best path, given the features.
+        # tag_seq: [seq_len, batch_size]
+        tag_seq = self.crf(lstm_feats)
+        return tag_seq
+
+    def predict(self, sentence):
+        # sentence: [seq_len, batch_size]
+        # feats: [seq_len, batch_size, tagset_size]
+        feats = self._get_lstm_features(sentence)
+        # tag_seq: [seq_len, batch_size]
+        tag_seq = self.crf.decode(feats)
+
+        return tag_seq
+    
+    def predict_prob(self, sentence):
+
+        feats = self._get_lstm_features(sentence)
+        tag_seq = self.crf.decode(feats)
+        tag_seq = torch.tensor(tag_seq)
+        tag_seq = tag_seq.view(-1, 1)
+
+
+        return tag_seq
