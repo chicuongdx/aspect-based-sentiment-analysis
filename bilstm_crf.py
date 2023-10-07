@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 from TorchCRF import CRF
-from gensim.models import FastText
+import numpy as np
 
 # 1. input is a sentence
 # 2. output is start and end position of all entities in the sentence
 # 3. use CRF to decode the output
 
 class BiLSTMCRF(nn.Module):
-    def __init__(self, vocab_size, tag_to_ix, weights_path = 'pretrained-weights/cc.vi.300.vec', embedding_dim=384, hidden_dim=384, units='lstm'):
+    def __init__(self, vocab_size, tag_to_ix, embedding_maxtrix = None, embedding_dim=384, hidden_dim=384, units='lstm'):
         super(BiLSTMCRF, self).__init__()
         
         self.embedding_dim = embedding_dim
@@ -17,9 +17,12 @@ class BiLSTMCRF(nn.Module):
         self.tag_to_ix = tag_to_ix
         self.tagset_size = len(tag_to_ix)
         
-        self.word_embeds = FastText.load_word2vec_format(weights_path, binary=False)
         # embedding layer
-        # self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
+        self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
+
+        if embedding_maxtrix is not None:
+            self.word_embeds.weight.data.copy_(torch.from_numpy(embedding_maxtrix))
+            self.word_embeds.weight.requires_grad = False
         
         if units == 'lstm':
             # bidirectional LSTM layer
@@ -42,10 +45,7 @@ class BiLSTMCRF(nn.Module):
     def _get_lstm_features(self, sentence):
         # sentence: (seq_len, batch_size)
         # embeds: (seq_len, batch_size, embedding_dim)
-        # embeds = self.word_embeds(sentence).view(len(sentence), 1, -1)
-        embeds = torch.zeros(len(sentence), 1, self.embedding_dim)
-        for i, word in enumerate(sentence):
-            embeds[i] = torch.tensor(self.word_embeds.wv[word])
+        embeds = self.word_embeds(sentence).view(len(sentence), 1, -1)
         
         # lstm_out: (seq_len, batch_size, hidden_dim)
         lstm_out, _ = self.lstm(embeds)
