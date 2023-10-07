@@ -1,25 +1,36 @@
 import torch
 import torch.nn as nn
-from torchcrf import CRF
+from TorchCRF import CRF
 
 # 1. input is a sentence
 # 2. output is start and end position of all entities in the sentence
 # 3. use CRF to decode the output
 
 class BiLSTMCRF(nn.Module):
-    def __init__(self, vocab_size, tag_to_ix, embedding_dim=384, hidden_dim=384):
+    def __init__(self, vocab_size, tag_to_ix, embedding_dim=384, hidden_dim=384, units='lstm'):
         super(BiLSTMCRF, self).__init__()
+
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
         self.vocab_size = vocab_size
         self.tag_to_ix = tag_to_ix
         self.tagset_size = len(tag_to_ix)
         
+        
         # embedding layer
         self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
         
-        # bidirectional LSTM layer
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim // 2, num_layers=1, bidirectional=True)
+        if units == 'lstm':
+            # bidirectional LSTM layer
+            self.lstm = nn.LSTM(embedding_dim, hidden_dim // 2, num_layers=1, bidirectional=True)
+        elif units == 'gru':
+            # bidirectional GRU layer
+            self.lstm = nn.GRU(embedding_dim, hidden_dim // 2, num_layers=1, bidirectional=True)
+        elif units == 'rnn':
+            # bidirectional RNN layer
+            self.lstm = nn.RNN(embedding_dim, hidden_dim // 2, num_layers=1, bidirectional=True)
+        else:
+            raise ValueError('units must be one of lstm, gru or rnn')
         
         # linear layer to find hidden state representation of tags
         self.hidden2tag = nn.Linear(hidden_dim, self.tagset_size)
