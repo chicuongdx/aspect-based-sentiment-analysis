@@ -16,6 +16,9 @@ class BiLSTMCRF(nn.Module):
         self.vocab_size = vocab_size
         self.tag_to_ix = tag_to_ix
         self.tagset_size = len(tag_to_ix)
+
+        if embedding_maxtrix is not None:
+            embedding_dim = embedding_maxtrix.shape[1]
         
         # embedding layer
         self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
