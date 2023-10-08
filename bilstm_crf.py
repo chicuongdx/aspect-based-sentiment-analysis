@@ -1,86 +1,62 @@
-import torch
-import torch.nn as nn
-from TorchCRF import CRF
+import pickle
+import operator
+import re
+import string
+import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
 
-# 1. input is a sentence
-# 2. output is start and end position of all entities in the sentence
-# 3. use CRF to decode the output
+# from plot_keras_history import plot_history
+# from sklearn.model_selection import train_test_split
+# from sklearn.metrics import multilabel_confusion_matrix
+# from keras_contrib.utils import save_load_utils
 
-class BiLSTMCRF(nn.Module):
-    def __init__(self, vocab_size, tag_to_ix, embedding_maxtrix = None, embedding_dim=384, hidden_dim=384, units='lstm'):
-        super(BiLSTMCRF, self).__init__()
-        
-        self.embedding_dim = embedding_dim
-        self.hidden_dim = hidden_dim
-        self.vocab_size = vocab_size
-        self.tag_to_ix = tag_to_ix
-        self.tagset_size = len(tag_to_ix)
+from keras import layers
+from keras import optimizers
 
-        if embedding_maxtrix is not None:
-            embedding_dim = embedding_maxtrix.shape[1]
-        
-        # embedding layer
-        self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
+from keras.models import Model
+# from keras import Input
+from tensorflow_addons import metrics
+from tensorflow_addons import losses
+from tensorflow_addons.layers import CRF
+from tensorflow_addons.text.crf import crf_log_likelihood
 
-        if embedding_maxtrix is not None:
-            self.word_embeds.weight.data.copy_(torch.from_numpy(embedding_maxtrix))
-            self.word_embeds.weight.requires_grad = False
-        
-        if units == 'lstm':
-            # bidirectional LSTM layer
-            self.lstm = nn.LSTM(embedding_dim, hidden_dim // 2, num_layers=1, bidirectional=True)
-        elif units == 'gru':
-            # bidirectional GRU layer
-            self.lstm = nn.GRU(embedding_dim, hidden_dim // 2, num_layers=1, bidirectional=True)
-        elif units == 'rnn':
-            # bidirectional RNN layer
-            self.lstm = nn.RNN(embedding_dim, hidden_dim // 2, num_layers=1, bidirectional=True)
-        else:
-            raise ValueError('units must be one of lstm, gru or rnn')
-        
-        # linear layer to find hidden state representation of tags
-        self.hidden2tag = nn.Linear(hidden_dim, self.tagset_size)
-        
-        # initialize CRF
-        self.crf = CRF(self.tagset_size)
-        
-    def _get_lstm_features(self, sentence):
-        # sentence: (seq_len, batch_size)
-        # embeds: (seq_len, batch_size, embedding_dim)
-        embeds = self.word_embeds(sentence).view(len(sentence), 1, -1)
-        
-        # lstm_out: (seq_len, batch_size, hidden_dim)
-        lstm_out, _ = self.lstm(embeds)
-        
-        # lstm_feats: (seq_len, batch_size, tagset_size)
-        lstm_feats = self.hidden2tag(lstm_out)
-        return lstm_feats
+
+
+def build_bilstm(max_len, vocab_size, n_tags, embedding_matrix=None, embedding_dim=None, unit='lstm', num_units=100, dropout=0.1, recurrent_dropout=0.1):
+    input = layers.Input(shape=(max_len,))
+
+    if embedding_matrix is not None:
+        model = layers.Embedding(input_dim=vocab_size + 1, output_dim=embedding_matrix.shape[-1], input_length=max_len, mask_zero=True, weights=[embedding_matrix], trainable=False)(input)
+    elif embedding_dim is not None:
+        model = layers.Embedding(input_dim=vocab_size + 1, output_dim=embedding_dim, input_length=max_len, mask_zero=True, embeddings_initializer='uniform')(input)
+    else:
+        raise ValueError('Must provide either an embedding matrix or an embedding dimension.')
+
+    if unit == 'lstm':
+        model = layers.Bidirectional(layers.LSTM(units=num_units, return_sequences=True, recurrent_dropout=recurrent_dropout))(model)
+    elif unit == 'gru':
+        model = layers.Bidirectional(layers.GRU(units=num_units, return_sequences=True, recurrent_dropout=recurrent_dropout))(model)
+    elif unit == 'rnn':
+        model = layers.Bidirectional(layers.SimpleRNN(units=num_units, return_sequences=True, recurrent_dropout=recurrent_dropout))(model)
+    else:
+        raise ValueError('Invalid unit type. Must be one of lstm, gru, or rnn.')
+
+    model = layers.Dropout(dropout)(model)
+    model = layers.TimeDistributed(layers.Dense(n_tags, activation="relu"))(model)
+
+    crf_layer = CRF(units=n_tags)
+    output_layer  = crf_layer(model)
+
+    output_model = Model(input, output_layer)
+
+    loss = losses.SigmoidFocalCrossEntropy()
+    metric = metrics.F1Score(num_classes=n_tags, average='micro')
     
-    def neg_log_likelihood(self, sentence, tags):
+    opt = optimizers.RMSprop(lr=0.01)
 
-        # sentence: (seq_len, batch_size)
-        # tags: (seq_len, batch_size)
-        # feats: (seq_len, batch_size, tagset_size)
-        feats = self._get_lstm_features(sentence)
-        
-        # loss: scalar
-        loss = self.crf(feats, tags)
-        return loss
-    
-    def forward(self, sentence):
-        # sentence: (seq_len, batch_size)
-        # feats: (seq_len, batch_size, tagset_size)
-        feats = self._get_lstm_features(sentence)
-        
-        # tag_seq: (seq_len, batch_size)
-        tag_seq = self.crf.viterbi_decode(feats)
-        return tag_seq
-    
-    def save(self, file_path):
+    output_model.compile(optimizer=opt, loss=loss, metrics=[metric])
+    output_model.summary()
 
-        torch.save(self.state_dict(), file_path)
-
-    def load(self, file_path):
-        
-        self.load_state_dict(torch.load(file_path))
+    return output_model
