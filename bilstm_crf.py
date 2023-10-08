@@ -58,19 +58,14 @@ class BiLSTMCRF(nn.Module):
         return lstm_feats
     
     def neg_log_likelihood(self, sentence, tags):
+
         # sentence: (seq_len, batch_size)
         # tags: (seq_len, batch_size)
         # feats: (seq_len, batch_size, tagset_size)
         feats = self._get_lstm_features(sentence)
         
-        # forward_score: (batch_size)
-        forward_score = self.crf.forward(feats, tags)
-        
-        # gold_score: (batch_size)
-        gold_score = self.crf.score_sentence(feats, tags)
-        
-        # loss: (batch_size)
-        loss = forward_score - gold_score
+        # loss: scalar
+        loss = self.crf(feats, tags)
         return loss
     
     def forward(self, sentence):
