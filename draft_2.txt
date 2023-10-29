@@ -1,0 +1,70 @@
+# label like this: [[start, end, tag], ...], ex: [[0, 30, 'DESIGN#POSITIVE'], [37, 48, 'FEATURES#NEGATIVE'], [49, 81, 'SER&ACC#POSITIVE']]
+# text like this: 'kiểu dáng thì đẹp cầm chắc tay nhưng loa nhỏ quá nhân viên phục vụ rất nhiệt tình'
+# convert to IOB format
+
+def convert_to_IOB_format(label, text):
+    # Tokenize the input text into words
+    tokens = text.split(' ')
+
+    # Initialize an empty list to store the IOB-formatted tokens and labels
+    iob_labels = []
+
+    # Initialize variables to keep track of token positions
+    current_token_start = 0
+    current_token_end = 0
+
+
+    # Iterate through the tokens
+    for token in tokens:
+        # Calculate the start and end positions of the current token
+        current_token_start = text.find(token, current_token_end)
+        current_token_end = current_token_start + len(token)
+
+        # Determine the IOB tag for the current token
+        iob_tag = 'O'  # Default tag is Outside
+
+        for label_entry in label:
+            start, end, tag = label_entry
+            if current_token_start >= start and current_token_end <= end:
+                if current_token_start == start:
+                    iob_tag = 'B-' + tag  # Beginning of an entity
+                else:
+                    iob_tag = 'I-' + tag  # Inside an entity
+                break
+
+        # Append the token and its IOB tag to the list
+        iob_labels.append(iob_tag)
+
+    return iob_labels
+
+# Initialize an dict of IOB: Set key as list [start, end] and value as tag default 'O'
+    iob_labels = {}
+    len_token = 0
+    for idx, char in enumerate(text):
+        len_token += 1
+        if char == ' ':
+            key = f"start: {idx - len_token + 1}, end: {idx}"
+            len_token = 0
+
+            # set value for key
+            iob_labels[key] = 'O'    
+
+    for label_entry in label:
+        start, end, tag = label_entry
+
+        # initialize current value
+        len_current_token = 0
+        key = None
+
+        for idx, char in enumerate(text[start:end]):
+            len_current_token += 1
+
+            if char == ' ':
+                key = f"start: {start + idx - len_current_token + 1}, end: {start + idx}"
+                len_current_token = 0
+
+                # set value for key
+                if idx - len_current_token + 1 - start == 0:
+                    iob_labels[key] = 'B-' + tag
+                else:
+                    iob_labels[key] = 'I-' + tag
