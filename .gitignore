@@ -1,3 +1,4 @@
 pretrained-weights/
 __pycache__
 .env
+model/
